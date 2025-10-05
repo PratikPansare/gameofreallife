@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Game of Life - Companion App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Global Styles */
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #1f2937 0%, #0f172a 100%);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 0;
+            margin: 0;
+        }
+        /* Mobile-First Layout: Game Board takes up full screen */
+        .game-board {
+            background-color: rgba(30, 41, 59, 0.9);
+            border: none; /* Removed desktop border for mobile space */
+            border-radius: 0;
+            padding: 0.5rem;
+            width: 100%;
+            max-width: 1400px;
+            margin: 0;
+            position: relative;
+            box-shadow: none;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            height: 100%;
+            overflow-y: auto; /* Allow scrolling on the main board */
+        }
+        .main-header {
+            display: flex;
+            flex-direction: column; /* Stack header elements on mobile */
+            gap: 1rem;
+            padding: 0.5rem;
+            align-items: center;
+        }
+
+        /* Control Buttons Group */
+        .control-buttons-group {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr); /* 2 buttons per row on small screen */
+            gap: 0.5rem;
+            width: 100%;
+        }
+        /* Buttons are larger and have increased padding for touch */
+        .control-buttons-group button {
+            font-size: 0.875rem; /* text-sm */
+            padding: 0.75rem 0.5rem; /* Increased vertical padding for touch target */
+            border-radius: 0.5rem; /* rounded-lg */
+            font-weight: 600;
+            min-height: 48px; /* Minimum touch target size */
+            box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+        }
+
+        /* Spinner Positioning for Mobile */
+        .spinner-container {
+            position: relative;
+            order: -1; /* Place spinner at the top of the header flex container */
+            align-self: center;
+            margin-bottom: 1rem;
+            top: 0;
+            right: 0;
+        }
+        #spinner {
+            width: 150px; /* Smaller spinner on mobile */
+            height: 150px;
+            cursor: grab;
+            transition: transform 4s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+        .spinner-container .relative {
+            width: 150px;
+            height: 150px;
+        }
+        .spinner-container .relative img:last-child {
+            width: 40px;
+            height: 40px;
+        }
+
+        .main-content {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start; /* Align content to the top */
+            align-items: center;
+            position: relative;
+            padding-bottom: 0; /* No need for fixed padding when container wraps */
+            padding: 1rem 0.5rem;
+        }
+
+        /* Drawn Card Area */
+        #drawn-card-area {
+            min-height: 300px; /* Ensure space for drawn cards */
+            width: 100%;
+        }
+        /* FIX: Set positioning context on the container holding the cards */
+        #drawn-card-container {
+            position: relative; 
+            flex-wrap: wrap; /* Allow cards to wrap horizontally */
+            justify-content: center;
+            gap: 1rem;
+        }
+        .drawn-card {
+            width: 160px; /* Smaller card size on mobile */
+            height: 220px;
+        }
+        .drawn-card .text-xl { font-size: 1.125rem; }
+        .drawn-card .text-sm { font-size: 0.75rem; }
+
+        /* Player Cards - Responsive Grid */
+        .player-cards-container {
+            position: relative; /* Changed from absolute to flow naturally */
+            bottom: auto;
+            left: auto;
+            right: auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); /* Auto-fit responsive grid */
+            gap: 0.75rem;
+            width: 100%;
+            padding: 0.5rem;
+            margin-top: 1rem;
+            margin-bottom: 1rem; /* Ensure space below cards */
+        }
+        .player-card {
+            width: 100%; /* Take full grid column width */
+            padding: 0.5rem;
+            min-height: 140px;
+        }
+        .player-card-inner {
+            padding: 0.75rem; /* Increased touchable area */
+        }
+        .player-card.drop-hover {
+            transform: none; /* simpler highlight for mobile */
+            outline: 4px solid #facc15;
+            outline-offset: -2px;
+            box-shadow: 0 0 15px rgba(250, 202, 25, 0.8);
+        }
+
+        /* Modal Overrides for Mobile */
+        .modal-backdrop > div {
+            width: 95%; /* Modals take up most of the screen */
+            height: auto;
+            max-height: 95vh;
+            border-radius: 0.75rem;
+            padding: 1rem;
+        }
+        #edit-cards-modal > div, #rules-modal > div {
+            height: 95vh;
+            width: 95%;
+        }
+        
+        /* Menu Modal Positioning */
+        #menu-modal {
+            top: 50px;
+            left: 10px;
+        }
+
+        /* Drag simulation element for touch */
+        #touch-drag-proxy {
+            position: fixed;
+            pointer-events: none;
+            z-index: 200;
+            opacity: 0.8;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.5);
+            width: 160px;
+            height: 220px;
+            background-color: white;
+            border-radius: 0.5rem;
+        }
+
+        /* Desktop Overrides */
+        @media (min-width: 1024px) {
+            .game-board {
+                height: 95vh;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 1rem;
+                padding: 1.5rem;
+                box-shadow: 0 4px 10px rgba(0,0,0,0.5), inset 0 0 10px rgba(255, 255, 255, 0.05);
+            }
+            .main-header {
+                flex-direction: row; /* Horizontal layout on desktop */
+                padding: 0 1rem;
+                align-items: flex-start;
+            }
+            .control-buttons-group {
+                grid-template-columns: repeat(4, auto); /* One row, auto-width */
+                gap: 1rem;
+                width: auto;
+            }
+            .spinner-container {
+                position: absolute;
+                top: -60px;
+                right: -60px;
+                order: 0;
+                margin-bottom: 0;
+            }
+            #spinner {
+                width: 240px;
+                height: 240px;
+            }
+            .spinner-container .relative {
+                width: 240px;
+                height: 240px;
+            }
+            .player-cards-container {
+                position: absolute;
+                bottom: 1rem;
+                left: 1rem;
+                right: 1rem;
+                display: flex;
+                justify-content: center;
+                gap: 1rem;
+                flex-wrap: wrap;
+                grid-template-columns: none;
+                margin-top: 0;
+            }
+            .player-card {
+                width: 220px;
+                min-height: auto;
+            }
+            .main-content {
+                padding-bottom: 180px; /* Space for absolute player cards */
+                justify-content: center;
+            }
+            .modal-backdrop > div {
+                width: 50%;
+                height: auto;
+                max-height: 80vh;
+                padding: 2rem;
+            }
+            #edit-cards-modal > div, #rules-modal > div {
+                width: 50%;
+                height: 80vh;
+            }
+            /* FIX: Constrain the size of the card container on desktop so the close button is relative to the card group size */
+            #drawn-card-container {
+                max-width: fit-content;
+            }
+        }
+
+        /* Existing custom styles */
+        .player-card.red .player-card-inner { background: #ef4444; box-shadow: 0 0 8px rgba(239, 68, 68, 0.4); }
+        .player-card.blue .player-card-inner { background: #3b82f6; box-shadow: 0 0 8px rgba(59, 130, 246, 0.4); }
+        .player-card.green .player-card-inner { background: #22c55e; box-shadow: 0 0 8px rgba(34, 197, 94, 0.4); }
+        .player-card.yellow .player-card-inner { background: #eab308; box-shadow: 0 0 8px rgba(234, 179, 8, 0.4); }
+        .modal-backdrop {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.9); /* Darker backdrop for mobile focus */
+            display: flex; align-items: center;
+            justify-content: center; z-index: 100;
+        }
+        .hidden { display: none; }
+        .close-drawn-cards-btn {
+            position: absolute; top: -15px; right: -15px; background-color: #ef4444; color: white;
+            width: 40px; height: 40px; border-radius: 50%; border: none; font-weight: bold; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+            font-size: 1.25rem; /* Larger close button */
+        }
+        .close-drawn-cards-btn:hover { transform: scale(1.1); background-color: #dc2626; }
+        .drawn-card {
+            border: 2px solid #e5e7eb; background-color: #ffffff; color: #1f2937;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3); border-radius: 0.5rem; transition: transform 0.1s;
+            transform-style: preserve-3d; perspective: 1000px;
+        }
+        .dragging { opacity: 0.5; }
+        .drawn-card-animating { animation: card-flip-in 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+        .drawn-card-returning { animation: card-flip-out 0.4s cubic-bezier(0.8, 0.2, 0.8, 1) forwards; }
+        @keyframes card-flip-in {
+            0% { transform: translateY(-100px) rotateY(90deg) scale(0.9); opacity: 0; }
+            100% { transform: translateY(0) rotateY(0deg) scale(1); opacity: 1; }
+        }
+        @keyframes card-flip-out {
+            0% { transform: translateY(0) rotateY(0deg) scale(1); opacity: 1; }
+            100% { transform: translateY(-100px) rotateY(-90deg) scale(0.9); opacity: 0; }
+        }
+        .card-editor-table { width: 100%; text-align: left; border-collapse: collapse; }
+        .card-editor-table th, .card-editor-table td { padding: 0.5rem; border-bottom: 1px solid #4b5563; }
+        .card-editor-table input { width: 100%; background-color: #374151; border: 1px solid #6b7280; border-radius: 0.25rem; padding: 0.25rem; color: white; }
+        .house-card-details { background-color: #4b5563; padding: 1rem; border-radius: 0.5rem; display: flex; justify-content: space-between; align-items: center; border: 1px solid #6b7280; transition: background-color 0.2s; }
+        .house-card-details:hover { background-color: #6b7280; }
+        .rules-content h3 { font-size: 1.5rem; font-weight: bold; margin-top: 1.5rem; margin-bottom: 0.5rem; }
+        .rules-content h4 { font-size: 1.1rem; font-weight: bold; margin-top: 1rem; margin-bottom: 0.25rem; }
+        .undo-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <div class="game-board">
+        <!-- Header -->
+        <header class="main-header">
+            <div class="flex items-center gap-2">
+                <div id="menu-icon" class="cursor-pointer relative p-3 rounded-lg bg-gray-800 hover:bg-gray-700 min-w-[48px] min-h-[48px] flex items-center justify-center" title="Open Menu">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M4 6H20" stroke="white" stroke-width="2" stroke-linecap="round"/><path d="M4 12H20" stroke="white" stroke-width="2" stroke-linecap="round"/><path d="M4 18H20" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    <!-- Menu Modal -->
+                    <div id="menu-modal" class="hidden absolute top-[52px] left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-2xl p-2 z-10">
+                        <button class="menu-rules-btn text-base hover:bg-gray-600 rounded px-4 py-2 w-full text-left transition">Rules</button>
+                        <button class="menu-edit-cards-btn text-base hover:bg-gray-600 rounded px-4 py-2 w-full text-left transition">View Cards</button>
+                        <button class="undo-btn text-base hover:bg-gray-600 rounded px-4 py-2 w-full text-left transition" title="Undo last action">Undo</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="control-buttons-group">
+                <button class="draw-college-career-btn bg-green-600 hover:bg-green-700 text-white font-bold transition duration-150" title="Draw a College Career">CAREER 🎓</button>
+                <button class="draw-standard-career-btn bg-green-800 hover:bg-green-900 text-white font-bold transition duration-150" title="Draw a Standard Career">CAREER 👔</button>
+                <button class="draw-house-btn bg-purple-600 hover:bg-purple-700 text-white font-bold transition duration-150" title="Draw a House card">HOUSE 🏠</button>
+                <button class="draw-life-event-btn bg-yellow-500 hover:bg-yellow-600 text-white font-bold transition duration-150" title="Draw a Life Event card">LIFE EVENTS</button>
+            </div>
+            
+            <div class="spinner-container">
+                <div class="relative" title="Click and drag to spin (or touch/swipe on mobile)">
+                    <img id="spinner" src="https://i.imgur.com/lSYBYaK.png" alt="Spinner Wheel" draggable="false">
+                    <img src="https://i.imgur.com/VaIEfqC.png" alt="Spinner Pointer" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 lg:w-16 lg:h-16 pointer-events-none">
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div id="drawn-card-area" class="relative p-3 w-full">
+                <p id="drag-instruction" class="text-center text-sm text-gray-400 mb-4 hidden">Drag or tap a card, then tap a player card below to assign it.</p>
+                <div id="drawn-card-container" class="flex gap-4 justify-center items-start min-h-[250px] w-full"></div>
+            </div>
+        </main>
+        
+        <!-- Player Cards -->
+        <div id="player-cards-container" class="player-cards-container"></div>
+    </div>
+
+    <!-- Hidden Proxy Element for Touch Drag Simulation (for visual feedback) -->
+    <div id="touch-drag-proxy" class="drawn-card hidden"></div>
+
+    <!-- Setup Modal (Simplified content for brevity, main changes in script/style) -->
+    <div id="setup-modal" class="modal-backdrop">
+        <div class="bg-gray-700 p-8 rounded-lg shadow-xl">
+            <h2 class="text-3xl font-bold mb-6 text-center">Game Setup</h2>
+            <div id="player-inputs" class="space-y-4">
+                <input type="text" class="player-name-input w-full p-3 bg-gray-800 rounded-lg text-lg" placeholder="Player 1 Name (Red)">
+                <input type="text" class="player-name-input w-full p-3 bg-gray-800 rounded-lg text-lg" placeholder="Player 2 Name (Blue)">
+                <input type="text" class="player-name-input w-full p-3 bg-gray-800 rounded-lg text-lg" placeholder="Player 3 Name (Green)">
+                <input type="text" class="player-name-input w-full p-3 bg-gray-800 rounded-lg text-lg" placeholder="Player 4 Name (Yellow)">
+            </div>
+            <div class="flex justify-center mt-6">
+                <button id="start-game-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-8 rounded-lg transition duration-150 text-xl min-w-[200px] min-h-[56px]">Start Game</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Cards Modal (Wider/Taller on Mobile) -->
+    <div id="edit-cards-modal" class="modal-backdrop hidden">
+        <div class="bg-gray-700 p-8 rounded-lg shadow-xl flex flex-col">
+            <h2 class="text-3xl font-bold mb-4 text-center">Card Viewer</h2>
+            <div class="flex-grow overflow-y-auto pr-4">
+                <h3 class="text-xl font-bold mt-4 mb-2">House Cards</h3>
+                <table id="house-card-editor" class="card-editor-table"></table>
+                <h3 class="text-xl font-bold mt-4 mb-2">Career Cards</h3>
+                <table id="career-card-editor" class="card-editor-table"></table>
+                <h3 class="text-xl font-bold mt-4 mb-2">Life Event Cards</h3>
+                <table id="life-event-card-editor" class="card-editor-table"></table>
+            </div>
+            <div class="flex justify-end gap-4 mt-6">
+                <button class="close-editor-btn bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-8 rounded-lg transition duration-150 min-w-[120px]">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Player Houses Modal (Wider/Taller on Mobile) -->
+    <div id="player-houses-modal" class="modal-backdrop hidden">
+        <div class="bg-gray-700 p-8 rounded-lg shadow-xl">
+            <div class="flex justify-between items-center mb-6">
+                <h2 id="player-houses-title" class="text-2xl font-bold lg:text-3xl">Player's Houses</h2>
+                <button class="close-player-houses-btn text-3xl font-bold leading-none hover:text-red-500 transition duration-150 min-w-[48px] min-h-[48px] flex items-center justify-center">&times;</button>
+            </div>
+            <div id="player-houses-content" class="space-y-4 max-h-[70vh] overflow-y-auto pr-4"></div>
+        </div>
+    </div>
+
+    <!-- Rules Modal (Wider/Taller on Mobile) -->
+    <div id="rules-modal" class="modal-backdrop hidden">
+        <div class="bg-gray-700 p-8 rounded-lg shadow-xl flex flex-col">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold lg:text-3xl">The Game of Life: Custom Rulebook</h2>
+                <button class="close-rules-btn text-3xl font-bold leading-none hover:text-red-500 transition duration-150 min-w-[48px] min-h-[48px] flex items-center justify-center">&times;</button>
+            </div>
+            <div class="rules-content flex-grow overflow-y-auto pr-4">
+                <p>Welcome to a more dynamic and interactive version of The Game of Life! This rulebook combines classic mechanics with new rules for careers, investments, and life events.</p>
+                <h3>1. Objective</h3><p>The goal is simple: travel through life making decisions, growing your family, and building your fortune. The player who retires with the most money wins the game!</p>
+                <h3>2. Setup</h3><p><b>Board & Spinner:</b> Unfold the board and attach the spinner.</p><p><b>Cards:</b> Shuffle the House, Career, and Life Event decks and place them face down in their designated spots.</p><p><b>Banker:</b> Choose one player to be the banker. The banker organizes the money and manages all transactions with the bank.</p><p><b>Starting Cash:</b> The banker gives each player starting cash.</p><p><b>Cars & Pegs:</b> Each player chooses a car and places one peg in the driver's seat. Place the remaining pegs in a supply pile.</p>
+                <h3>3. Starting Your Life</h3><p>On your first turn, you must choose one of two paths:</p><p><b>College Path:</b> Pay the bank $100K in student loans. Start on the College space. This path gives you access to higher-paying College Careers.</p><p><b>Career Path:</b> Start on the Career space. You will draw a Standard Career card immediately.</p>
+                <h3>4. How to Play</h3><p>On your turn, follow these steps:</p><ol class="list-decimal list-inside ml-4"><li>Optional: Invest (See Section 7).</li><li>Spin the Spinner: Spin to see how many spaces you move.</li><li>Move Your Car: Move your car that many spaces along the path.</li><li>Follow Space Instructions: Follow the rules for the space you land on.</li></ol>
+                <h3>5. Getting Paid: Payday Rules</h3><p><b>Passing Payday:</b> When your move takes you past a Payday space, collect your Base Salary from the bank after your turn is complete.</p><p><b>Landing on Payday:</b> If you land exactly on a Payday space, you get a bonus! Collect your Bonus Salary.</p><p><b>College Careers:</b> Collect your Fixed Bonus.</p><p><b>Standard Careers:</b> Spin to determine your bonus based on your card's rule.</p>
+                <h3>6. Board Spaces Explained </h3><p><b>Life Event Space:</b> Draw a Life Event card and follow its instructions.</p><p><b>Buy a House Space:</b> If you land on this space, you may buy property. Draw 3 House cards. You may buy one, two, or all three by paying their "Buy Value" to the bank.</p><h4>Marriage & Family Spaces:</h4><p><b>Marriage:</b> When you land here, You may choose to pay $50k to the bank and add a peg to your car. If you get married, spin for wedding gifts: Red = Collect $10K from each player. Black = No gifts.</p><p><b>Family:</b> The first time you land on a Family space, You may choose to pay $50k to the bank and add a peg to your car and spin for gifts with the same rule: Red = Collect $10K from each player. Black = No gifts.</p><p><b>Invest Space:</b> This space triggers a Market Fluctuation for all investors. (See Section 7).</p>
+                <h3>7. The Dynamic Number Market (Investment Rules)</h3><h4>Buying or Changing an Investment:</h4><p>At the beginning of any of your turns (before you spin to move), you may perform one of these actions:</p><p><b>Start an Investment:</b> Pay the bank $50K. Choose a number from 1-10 and place your Investment marker below the number.</p><p><b>Change Your Number:</b> Pay the bank $30K to move your investment to a different number. Your investment's current value carries over to the new number.</p><p><i>Note: Multiple players can invest in the same number.</i></p><h4>Growth & Payouts:</h4><p>If any player spins your chosen investment number during their move, your investment value increases by $10K (max $50K). You immediately collect the new, higher value from the bank.</p><h4>Market Fluctuation:</h4><p>When any player lands on an Invest space, they must spin again to determine the market's fate:</p><p><b>Red Spin (Market Dip):</b> All investors decrease their investment value by $10K (cannot go below $0).</p><p><b>Black Spin (Market Boom):</b> All investors increase their investment value by $10K (max $50K).</p><p>After the value changes, every investor collects their new investment value from the bank.</p>
+                <h3>8. Retirement & Winning the Game</h3><p><b>Retiring:</b> When you reach the "Retirement" space, your main turns are over. Pay off any outstanding loans.</p><p><b>Retirement Portfolio (New Rule):</b> Even after retiring, you are still in the market! On your turn, you do not move your car. Instead, spin the spinner once. If the number spun matches any player's investment number, that investment pays out to its owner as usual. You can still earn money from your investments and influence the game!</p><h4>Ending the Game:</h4><p>Once all players have retired, it's time to tally your wealth:</p><p><b>Sell Your House:</b> Spin the spinner one last time. A Red number gets you the lower sale price; a Black number gets you the higher price. Collect this from the bank.</p><p><b>Cash in Your Pegs:</b> Collect $50K from the bank for every peg in your car.</p><p><b>Count Your Cash:</b> Add up all your cash on hand.</p><p>The player with the most money is the winner!</p>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        const initialCardData = {
+    House: [
+        { id: "h01", title: "Mobile Home", buy: 60, sellRed: 50, sellBlack: 70, description: "Cozy and on the move. (Low Risk)" },
+        { id: "h02", title: "Tiny Home", buy: 80, sellRed: 70, sellBlack: 90, description: "Minimalist living, very safe." },
+        { id: "h03", title: "Studio Apartment", buy: 120, sellRed: 100, sellBlack: 140, description: "Affordable starter, safe bet." },
+        { id: "h04", title: "Fixer-Upper", buy: 150, sellRed: 110, sellBlack: 210, description: "Needs love, good potential reward." },
+        { id: "h05", title: "Duplex", buy: 180, sellRed: 150, sellBlack: 230, description: "Two homes in one, decent upside." },
+        { id: "h06", title: "Suburban Townhouse", buy: 200, sellRed: 150, sellBlack: 260, description: "Balanced mid-tier with a swing." },
+        { id: "h07", title: "City Condo", buy: 220, sellRed: 170, sellBlack: 280, description: "Urban living convenience." },
+        { id: "h08", title: "Modern Loft", buy: 250, sellRed: 180, sellBlack: 320, description: "Stylish, a moderate gamble." },
+        { id: "h09", title: "Ranch-Style House", buy: 260, sellRed: 200, sellBlack: 340, description: "Classic comfort, solid upside." },
+        { id: "h10", title: "Lakeside Cottage", buy: 280, sellRed: 200, sellBlack: 380, description: "Scenic, very swingy resale." },
+        { id: "h11", title: "Beach Bungalow", buy: 300, sellRed: 210, sellBlack: 400, description: "Coastal charm, risky market." },
+        { id: "h12", title: "Mountain Chalet", buy: 350, sellRed: 240, sellBlack: 450, description: "Seasonal appeal, high variance." },
+        { id: "h13", title: "Luxury Penthouse", buy: 400, sellRed: 250, sellBlack: 550, description: "High risk, high reward." },
+        { id: "h14", title: "Eco-Smart Villa", buy: 450, sellRed: 300, sellBlack: 600, description: "Prestige property with big potential." },
+        { id: "h15", title: "Smart Home", buy: 480, sellRed: 320, sellBlack: 650, description: "The future is volatile but rewarding." },
+        { id: "h16", title: "Historic Mansion", buy: 500, sellRed: 300, sellBlack: 700, description: "The ultimate gamble for a huge payoff." }
+            ],
+            Career: [
+                { id: "c1", title: "Doctor", salary: 90, bonus: "Add $40K", college: true }, { id: "c2", title: "Lawyer", salary: 80, bonus: "Add $30K", college: true }, { id: "c3", title: "Financial Analyst", salary: 80, bonus: "Add $30K", college: true }, { id: "c4", title: "Veterinarian", salary: 70, bonus: "Add $30K", college: true }, { id: "c5", title: "Engineer", salary: 70, bonus: "Add $20K", college: true }, { id: "c6", title: "Architect", salary: 70, bonus: "Add $20K", college: true }, { id: "c7", title: "Software Developer", salary: 70, bonus: "Add $20K", college: true }, { id: "c8", title: "Professor", salary: 60, bonus: "Add $20K", college: true },
+                { id: "c9", title: "Athlete", salary: 50, bonus: "Black spin = double salary", college: false }, { id: "c10", title: "Artist", salary: 50, bonus: "Spin 10 = +$50K", college: false }, { id: "c11", title: "Mechanic", salary: 50, bonus: "Red spin = +$30K", college: false }, { id: "c12", title: "Chef", salary: 50, bonus: "Red spin = +$30K", college: false }, { id: "c13", title: "Influencer", salary: 50, bonus: "Odd spin = +$30K", college: false }, { id: "c14", title: "Farmer", salary: 50, bonus: "Even spin = +$20K", college: false }, { id: "c15", title: "Salesperson", salary: 40, bonus: "Add $10K x spin", college: false }, { id: "c16", title: "Delivery Driver", salary: 40, bonus: "Add $10K x spin", college: false }
+            ],
+              "Life Event": [
+        { id: "le01", title: "Emergency Surgery 🏥", description: "Appendix says goodbye. Doctor says ka-ching.\nPay $40K to the Doctor player (or Bank)." },
+        { id: "le02", title: "Court Victory ⚖️", description: "You won the case! Lawyer takes their cut.\nCollect $50K from Bank, then pay $10K to the Lawyer player." },
+        { id: "le03", title: "Patent Filing 💡", description: "Your gadget is a hit. Engineer files the paperwork.\nCollect $40K from Bank, then pay $10K to the Engineer player." },
+        { id: "le04", title: "Dream House Design 🏠", description: "Your mansion needs a golden staircase.\nPay $40K to the Architect player (or Bank)." },
+        { id: "le05", title: "Research Grant 🎓", description: "Your study on cheese economics gets funded.\nCollect $40K from Bank, then pay $10K to the Professor player." },
+        { id: "le06", title: "Sick Hamster 🐹", description: "Your hamster swallowed a marble. Tiny X-rays aren’t cheap.\nPay $30K to the Veterinarian player (or Bank)." },
+        { id: "le07", title: "Market Boom 📈", description: "Your stocks soared. Analyst sends a bill.\nCollect $50K from Bank, then pay $10K to the Financial Analyst player." },
+        { id: "le08", title: "Bug Fix Frenzy 💻", description: "Your app crashed. Developer charges for a patch.\nPay $20K to the Software Developer player (or Bank)." },
+        { id: "le09", title: "Sports Injury 🏈", description: "Weekend warrior sprain. Athlete cashes in.\nPay $20K to the Athlete player (or Bank)." },
+        { id: "le10", title: "Championship Bonus 🏆", description: "You scored the winning goal!\nCollect $50K from Bank, then pay $10K to the Athlete player." },
+        { id: "le11", title: "Art Commission 🎨", description: "You bought a painting. It’s just a red square.\nPay $30K to the Artist player (or Bank)." },
+        { id: "le12", title: "Viral Painting 🖼️", description: "Your doodle became a meme.\nCollect $40K from Bank, then pay $10K to the Artist player." },
+        { id: "le13", title: "Car Breakdown 🚗", description: "Your car makes a noise like a dying walrus.\nPay $30K to the Mechanic player (or Bank)." },
+        { id: "le14", title: "Custom Upgrade 🔧", description: "You tricked out a sports car.\nCollect $40K from Bank, then pay $10K to the Mechanic player." },
+        { id: "le15", title: "Bad Pitch 📢", description: "Nobody bought your vacuum demo.\nPay $20K to the Salesperson player (or Bank)." },
+        { id: "le16", title: "Big Sale 💼", description: "You closed a huge deal.\nCollect $40K from Bank, then pay $10K to the Salesperson player." },
+        { id: "le17", title: "PR Scandal 😱", description: "That post didn’t age well.\nPay $30K to the Influencer player (or Bank)." },
+        { id: "le18", title: "Viral Trend 📱", description: "Your dance challenge broke the internet.\nCollect $40K from Bank, then pay $10K to the Influencer player." },
+        { id: "le19", title: "Crop Failure 🌽", description: "Locusts ate your lettuce.\nPay $30K to the Farmer player (or Bank)." },
+        { id: "le20", title: "Harvest Festival 🌾", description: "Bumper crop season.\nCollect $40K from Bank, then pay $10K to the Farmer player." },
+        { id: "le21", title: "Kitchen Fire 🔥", description: "The flambé flambé’d.\nPay $30K to the Chef player (or Bank)." },
+        { id: "le22", title: "Food Festival 🍲", description: "Your chili recipe won gold.\nCollect $40K from Bank, then pay $10K to the Chef player." },
+        { id: "le23", title: "Lost Package 📦", description: "Your package is in another city.\nPay $20K to the Delivery Driver player (or Bank)." },
+        { id: "le24", title: "Rush Delivery 🚚", description: "Your package arrived early!\nCollect $30K from Bank, then pay $10K to the Delivery Driver player." },
+        { id: "le25", title: "Personal Training 💪", description: "You hired an Athlete to get you in shape. It cost a lot.\nPay $30K to the Athlete player (or Bank)." },
+        { id: "le26", title: "Art Auction Win 💰", description: "The red square sold for a fortune. Who knew?\nCollect $60K from Bank, then pay $20K to the Artist player." },
+        { id: "le27", title: "Failed Emissions 💨", description: "Your car's exhaust is... expressive. A Mechanic must fix it.\nPay $20K to the Mechanic player (or Bank)." },
+        { id: "le28", title: "Referral Bonus 🤝", description: "You referred a friend. The Salesperson gave you a kickback.\nCollect $20K from Bank, then pay $10K to the Salesperson player." },
+        { id: "le29", title: "Collab Video 📹", description: "Your cameo in an Influencer's video got you a payday.\nCollect $40K from Bank, then pay $10K to the Influencer player." },
+        { id: "le30", title: "Corn Maze Craze 🌽", description: "Your farm's corn maze was the talk of the town.\nCollect $30K from Bank, then pay $10K to the Farmer player." },
+        { id: "le31", title: "Publish Cookbook 📚", description: "Your secret family recipes are a bestseller!\nCollect $40K from Bank, then pay $10K to the Chef player." },
+        { id: "le32", title: "Wrong Address 🗺️", description: "You sent a fragile package to the wrong continent. Oops.\nPay $20K to the Delivery Driver player (or Bank)." },
+        { id: "le33", title: "Birthday Party! 🎂", description: "Happy birthday! Your friends brought gifts.\nCollect $10K from every other player." },
+        { id: "le34", title: "Dinner is on You! 🍔", description: "You treat the player on your right to a fancy meal.\nPay the player on your right $20K." },
+        { id: "le35", title: "Good Karma 🙏", description: "You helped the player on your left move. They're grateful.\nThe player on your left pays you $20K." },
+        { id: "le36", title: "Passing the Hat 🎩", description: "A street performer was amazing. You cover for everyone.\nPay $10K to every other player." },
+        { id: "le37", title: "Generous Tip 💸", description: "The service was excellent. You help out the table.\nPay the player with the least amount of cash $30K." },
+        { id: "le38", title: "Stock Tip Share 📈", description: "You shared a hot tip. Choose one player to give you a 'thank you'.\nChoose one player. That player pays you $30K." },
+        { id: "le39", title: "Road Trip! 🚗", description: "You're driving, so everyone else chips in for gas.\nCollect $10K from every other player." },
+        { id: "le40", title: "Forgot Your Wallet 🤦", description: "How embarrassing! The player on your left covers your bill.\nPay the player on your left $20K." },
+        { id: "le41", title: "Karaoke Night 🎤", description: "Your singing was... powerful. The crowd pays you to stop.\nCollect $10K from every other player." },
+        { id: "le42", title: "DIY Disaster 🔨", description: "Your 'simple' plumbing fix flooded your neighbor's apartment.\nPay the player on your left $30K for damages." },
+        { id: "le43", title: "Yard Sale Treasure 💎", description: "You found a rare antique at a yard sale.\nThe player on your right buys it from you for $40K." },
+        { id: "le44", title: "Good Samaritan 🏆", description: "You returned a lost wallet. The richest player rewards you.\nCollect $30K from the player with the most cash." },
+        { id: "le45", title: "Podcast Sponsor 🎙️", description: "Your new podcast is a hit! Choose your first advertiser.\nChoose one player. That player pays you $40K for a sponsorship." },
+        { id: "le46", title: "Pet Sitting Mishap 🦜", description: "You watched a friend's parrot. It learned your credit card number.\nPay the player on your right $20K." },
+        { id: "le47", title: "Surprise Twin! 👯", description: "Turns out you have a long-lost twin who just found you. It's awkward.\nAdd 1 peg to your car. Collect $10K from every other player as a welcome gift." },
+        { id: "le48", title: "Carpool Duty 🚐", description: "You started a carpool with a coworker.\nThe player on your left gives you 1 peg. Pay them $20K for their trouble." },
+        { id: "le49", title: "School Play 🎭", description: "Your kid landed the lead role as 'Tree #2'.\nPay the Professor (or Bank) $20K for drama club fees. If you have 3+ pegs, collect a $30K 'Proud Parent' bonus from the bank." },
+        { id: "le50", title: "Family Vacation Photo 📸", description: "You need a family portrait. The Artist is... creative.\nPay the Artist (or Bank) $10K for each peg in your car." },
+        { id: "le51", title: "Lost in the Mall 🛍️", description: "You lost a kid in the mall. Don't panic!\nPay the Salesperson (or Bank) $20K to make an announcement. The player on your right 'finds' your kid: take 1 peg from them (if they have more than one)." },
+        { id: "le52", title: "You're Fired 🔥", description: "Unfortunately the recession costs you your job.\nPick 2 career cards from the deck and choose 1 immediately." }
+    ]
+};
+        const playerColors = ['red', 'blue', 'green', 'yellow'];
+
+        // Define a comprehensive emoji map for card titles/descriptions
+        const EMOJI_MAP = {
+            // Careers
+            "Doctor": "🩺", "Lawyer": "⚖️", "Financial Analyst": "📈", "Veterinarian": "🐾",
+            "Engineer": "⚙️", "Architect": "📐", "Software Developer": "💻", "Professor": "📚",
+            "Athlete": "🏅", "Artist": "🎨", "Mechanic": "🛠️", "Chef": "👨‍🍳",
+            "Influencer": "🤳", "Farmer": "🚜", "Salesperson": "🤝", "Delivery Driver": "📦",
+            "Unemployed": "🛑",
+            
+            // Houses
+            "Mobile Home": "🏠", "Tiny Home": "🏡", "Studio Apartment": "🏢", "Fixer-Upper": "🏚️",
+            "Duplex": "🏘️", "Suburban Townhouse": "🏡", "City Condo": "🏙️", "Modern Loft": "💡",
+            "Ranch-Style House": "🤠", "Lakeside Cottage": "🛶", "Beach Bungalow": "🏖️", "Mountain Chalet": "🏔️",
+            "Luxury Penthouse": "💎", "Eco-Smart Villa": "🌿", "Smart Home": "🤖", "Historic Mansion": "🏰",
+
+            // Life Events (using keywords from descriptions/titles)
+            "Surgery": "🩹", "Victory": "🏆", "Patent": "📝", "Design": "✍️",
+            "Grant": "🔬", "Hamster": "🐹", "Boom": "🚀", "Frenzy": "🐞", 
+            "Injury": "🤕", "Bonus": "🥇", "Commission": "🖼️", "Painting": "🖌️",
+            "Car Breakdown": "🚗", "Upgrade": "✨", "Pitch": "🎯", "Sale": "💸", 
+            "Scandal": "📸", "Trend": "✨", "Crop Failure": "🌾", "Harvest": "🌽", 
+            "Fire": "🔥", "Festival": "🎉", "Lost Package": "📦", "Delivery": "🚚",
+            "Training": "💪", "Auction": "💵", "Emissions": "⛽", "Referral": "⭐",
+            "Collab": "🤝", "Maze": "🧩", "Cookbook": "📖", "Address": "🗺️",
+            "Party": "🥳", "Dinner": "🍽️", "Karma": "🙏", "Hat": "🎩", 
+            "Tip": "🎁", "Stock Tip": "📈", "Road Trip": "🗺️", "Wallet": "💳",
+            "Karaoke": "🎤", "Disaster": "💥", "Treasure": "💰", "Samaritan": "😇",
+            "Sponsor": "📣", "Mishap": "🐈", "Fired": "🚪"
+        };
+
+        function getCardEmoji(card, deckType) {
+            if (!card || !card.title) return '❓';
+            
+            // Handle careers and houses based on exact title match
+            if (EMOJI_MAP[card.title]) return EMOJI_MAP[card.title];
+
+            // Handle Life Events using keyword matching
+            if (deckType === 'Life Event' || card.description) {
+                const text = (card.title + ' ' + (card.description || '')).toLowerCase();
+                for (const keyword in EMOJI_MAP) {
+                    if (text.includes(keyword.toLowerCase())) {
+                        return EMOJI_MAP[keyword];
+                    }
+                }
+            }
+
+            return '🃏'; // Default fallback
+        }
+
+        class Game {
+            constructor() {
+                this.players = [];
+                this.drawnCards = [];
+                this.cardData = {};
+                this.decks = {};
+                this.history = [];
+                this.draggedCardData = null; // State for touch drag simulation
+                this.loadCardData();
+                this.initSpinner();
+                this.initEventListeners();
+                this.updateUndoButtonState();
+            }
+
+            initEventListeners() {
+                document.getElementById('start-game-btn').addEventListener('click', this.startGame);
+                document.querySelector('.draw-house-btn').addEventListener('click', () => this.drawCard('House'));
+                document.querySelector('.draw-college-career-btn').addEventListener('click', () => this.drawCard('College Career'));
+                document.querySelector('.draw-standard-career-btn').addEventListener('click', () => this.drawCard('Standard Career'));
+                document.querySelector('.draw-life-event-btn').addEventListener('click', () => this.drawCard('Life Event'));
+                document.querySelector('.menu-rules-btn').addEventListener('click', this.openRules);
+                document.querySelector('.menu-edit-cards-btn').addEventListener('click', this.openCardEditor);
+                document.querySelector('.undo-btn').addEventListener('click', this.undo);
+                document.querySelector('.close-rules-btn').addEventListener('click', this.closeRules);
+                document.querySelector('.close-editor-btn').addEventListener('click', this.closeCardEditor);
+                document.querySelector('.close-player-houses-btn').addEventListener('click', this.closePlayerHouses);
+
+                const playerContainer = document.getElementById('player-cards-container');
+                
+                // Add click/tap handler for showing houses and handling touch drop/assign
+                playerContainer.addEventListener('click', e => {
+                    const playerCardEl = e.target.closest('.player-card');
+                    if (playerCardEl) {
+                         if (this.draggedCardData) {
+                            // Touch Drop/Assignment logic: If a card is "lifted" (this.draggedCardData is set), assign it.
+                            this.assignCardToPlayer(this.draggedCardData.cardId, this.draggedCardData.deckType, playerCardEl.dataset.playerId);
+                            this.draggedCardData = null; // Clear state after assignment
+                            document.querySelectorAll('.player-card').forEach(card => card.classList.remove('drop-hover'));
+                            document.getElementById('drag-instruction').classList.add('hidden');
+                        } else {
+                            // Default action: show houses
+                            this.showPlayerHouses(playerCardEl.dataset.playerId);
+                        }
+                    }
+                });
+
+                // --- Drag and Drop Logic (Kept for Desktop Compatibility) ---
+                playerContainer.addEventListener('dragover', e => {
+                    e.preventDefault();
+                    const playerCard = e.target.closest('.player-card');
+                    if (playerCard) {
+                        e.dataTransfer.dropEffect = 'move';
+                        document.querySelectorAll('.player-card').forEach(card => card.classList.remove('drop-hover'));
+                        playerCard.classList.add('drop-hover');
+                    }
+                });
+                playerContainer.addEventListener('dragleave', e => {
+                    const playerCard = e.target.closest('.player-card');
+                    if (playerCard) playerCard.classList.remove('drop-hover');
+                });
+                playerContainer.addEventListener('drop', e => {
+                    e.preventDefault();
+                    const playerCard = e.target.closest('.player-card');
+                    if (playerCard) {
+                        playerCard.classList.remove('drop-hover');
+                        try {
+                            const { cardId, deckType } = JSON.parse(e.dataTransfer.getData('application/json'));
+                            this.assignCardToPlayer(cardId, deckType, playerCard.dataset.playerId);
+                        } catch (error) {
+                            console.error("Failed to parse dropped card data:", error);
+                        }
+                    }
+                });
+                // --- End Drag and Drop Logic ---
+
+
+                document.getElementById('menu-icon').addEventListener('click', e => {
+                    e.stopPropagation();
+                    document.getElementById('menu-modal').classList.toggle('hidden');
+                });
+                document.addEventListener('click', () => document.getElementById('menu-modal').classList.add('hidden'));
+
+                document.getElementById('setup-modal').classList.remove('hidden');
+            }
+            
+            // CONTEXT FIX: Converted methods to class field arrow functions to permanently bind 'this'
+            saveState = () => {
+                this.history.push(JSON.parse(JSON.stringify(this.players)));
+                this.updateUndoButtonState();
+                console.log(`State saved. Total history length: ${this.history.length}`);
+            }
+
+            // CONTEXT FIX: Converted methods to class field arrow functions
+            undo = () => {
+                if (this.history.length <= 1) {
+                    console.log("Nothing to undo!");
+                    return;
+                }
+                
+                this.history.pop(); 
+                this.players = JSON.parse(JSON.stringify(this.history[this.history.length - 1]));
+                this.renderPlayerCards();
+                this.updateUndoButtonState();
+                console.log(`Undo successful. History length reduced to: ${this.history.length}`);
+            }
+            
+            updateUndoButtonState() {
+                const undoBtn = document.querySelector('.undo-btn');
+                undoBtn.disabled = this.history.length <= 1;
+            }
+
+            shuffle(array) {
+                for (let i = array.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [array[i], array[j]] = [array[j], array[i]];
+                }
+            }
+
+            loadCardData() {
+                this.cardData = JSON.parse(JSON.stringify(initialCardData));
+                
+                this.decks['House'] = [...this.cardData['House']];
+                this.decks['Life Event'] = [...this.cardData['Life Event']];
+                this.decks['College Career'] = this.cardData['Career'].filter(c => c.college);
+                this.decks['Standard Career'] = this.cardData['Career'].filter(c => !c.college);
+                for(const key in this.decks) this.shuffle(this.decks[key]);
+            }
+            
+            // CONTEXT FIX: Converted methods to class field arrow functions
+            openCardEditor = () => {
+                this.populateCardEditor();
+                document.getElementById('edit-cards-modal').classList.remove('hidden');
+            }
+
+            // CONTEXT FIX: Converted methods to class field arrow functions
+            closeCardEditor = () => {
+                document.getElementById('edit-cards-modal').classList.add('hidden');
+            }
+            
+            // CONTEXT FIX: Converted methods to class field arrow functions
+            openRules = () => {
+                document.getElementById('rules-modal').classList.remove('hidden');
+            }
+            
+            // CONTEXT FIX: Converted methods to class field arrow functions
+            closeRules = () => {
+                document.getElementById('rules-modal').classList.add('hidden');
+            }
+
+            populateCardEditor() {
+                this.populateDeckEditor('House', document.getElementById('house-card-editor'));
+                this.populateDeckEditor('Career', document.getElementById('career-card-editor'));
+                this.populateDeckEditor('Life Event', document.getElementById('life-event-card-editor'));
+            }
+
+            populateDeckEditor(deckName, table) {
+                table.innerHTML = '';
+                const deck = this.cardData[deckName];
+                if (!deck || deck.length === 0) {
+                    const thead = table.createTHead();
+                    const headerRow = thead.insertRow();
+                    const templateDeck = initialCardData[deckName.replace(' ', '')] || [];
+                    const headers = templateDeck.length > 0 ? Object.keys(templateDeck[0]) : ['id', 'title', 'description'];
+                    headers.forEach(key => headerRow.insertCell().textContent = key);
+                    table.createTBody();
+                    return;
+                }
+                const headers = Object.keys(deck[0]);
+                const thead = table.createTHead();
+                const headerRow = thead.insertRow();
+                headers.forEach(key => headerRow.insertCell().textContent = key);
+                const tbody = table.createTBody();
+                deck.forEach((card, index) => {
+                    const row = tbody.insertRow();
+                    headers.forEach(key => {
+                        const cell = row.insertCell();
+                        const input = document.createElement('input');
+                        input.type = 'text';
+                        input.value = card[key];
+                        input.readOnly = true;
+                        input.dataset.deck = deckName;
+                        input.dataset.index = index;
+                        input.dataset.key = key;
+                        cell.appendChild(input);
+                    });
+                });
+            }
+            
+            // CONTEXT FIX: Converted methods to class field arrow functions
+            startGame = () => {
+                const inputs = document.querySelectorAll('.player-name-input');
+                this.players = [];
+                inputs.forEach((input, index) => {
+                    if (input.value.trim() !== '') {
+                        this.players.push({ id: index, name: input.value.trim(), color: playerColors[index], career: null, houses: [] });
+                    }
+                });
+                document.getElementById('setup-modal').style.display = 'none';
+                this.history = [];
+                this.saveState();
+                this.renderPlayerCards();
+            }
+
+            renderPlayerCards() {
+                const container = document.getElementById('player-cards-container');
+                container.innerHTML = this.players.map(p => {
+                    const career = p.career || { title: "Unemployed", salary: 0, bonus: "Find a job!", college: null };
+                    const careerEmoji = getCardEmoji(career, 'Career');
+                    const careerTypeIcon = career.college === true ? '🎓' : (career.college === false ? '💼' : '❓');
+                    const careerTitle = career.college === null ? career.title : `${career.title} ${careerTypeIcon}`;
+                    
+                    return `<div class="player-card ${p.color}" data-player-id="${p.id}" title="Click to view houses or tap to drop card">
+                        <div class="player-card-inner flex flex-col justify-between h-full">
+                            <p class="font-bold text-lg lg:text-xl mb-1">${p.name}</p>
+                            <div class="flex-grow my-2">
+                                <p class="font-semibold text-sm tracking-wider mb-1">${careerEmoji} ${careerTitle}</p>
+                                <p class="text-xs opacity-90">💰 Salary: $${career.salary}K</p>
+                                <p class="text-xs italic opacity-80 mt-1">${career.bonus}</p>
+                            </div>
+                            <p class="text-xs lg:text-sm border-t border-white border-opacity-30 pt-2">🏠 Houses: ${p.houses.length}</p>
+                        </div>
+                    </div>`;
+                }).join('');
+            }
+
+            renderDrawnCards(animateNewCard = false) {
+                const area = document.getElementById('drawn-card-area');
+                const container = document.getElementById('drawn-card-container');
+                const instruction = document.getElementById('drag-instruction');
+
+                // If cards exist, show instructions, otherwise hide.
+                if (this.drawnCards.some(c => c.buy !== undefined || c.salary !== undefined)) {
+                    instruction.classList.remove('hidden');
+                } else {
+                    instruction.classList.add('hidden');
+                }
+                
+                // FIX: Clear the container first to prevent card stacking and ensure clean button placement
+                container.innerHTML = ''; 
+
+                if (this.drawnCards.length > 0) {
+                    this.drawnCards.forEach((card, index) => {
+                        let desc = card.description || '', title = card.title, deckType = card.deck;
+                        let headerBg = 'bg-gray-800 text-white';
+                        let icon = getCardEmoji(card, deckType);
+
+                        if (card.buy !== undefined) { 
+                            desc = `BUY: $${card.buy}K | SELL: $${card.sellRed}K (R) / $${card.sellBlack}K (B)`;
+                            deckType = 'House';
+                            headerBg = 'bg-purple-600';
+                        }
+                        if (card.salary !== undefined) { 
+                            desc = `SALARY: $${card.salary}K<br/>BONUS: ${card.bonus}`;
+                            deckType = card.college ? 'College Career' : 'Standard Career';
+                            title = `${card.title}`;
+                            headerBg = card.college ? 'bg-green-600' : 'bg-green-800';
+                        }
+                        if (deckType === 'Life Event') {
+                            headerBg = 'bg-yellow-500';
+                        }
+                        
+                        const isDraggable = card.buy !== undefined || card.salary !== undefined;
+                        const draggableAttribute = isDraggable ? 'draggable="true" title="Drag this card to a player"' : 'title="Life Event: Apply effect and discard"';
+                        const cursorClass = isDraggable ? 'cursor-grab' : 'cursor-default';
+
+                        const isNewCard = index === this.drawnCards.length - 1;
+                        const animationClass = (animateNewCard && isNewCard) ? 'drawn-card-animating' : '';
+                        
+                        const cardElement = document.createElement('div');
+                        cardElement.className = `drawn-card ${cursorClass} p-0 rounded-xl w-40 lg:w-56 h-56 lg:h-72 flex flex-col shadow-2xl overflow-hidden ${animationClass}`;
+                        cardElement.setAttribute('data-card-id', card.id);
+                        cardElement.setAttribute('data-deck-type', deckType);
+                        if(isDraggable) cardElement.setAttribute('draggable', 'true');
+                        cardElement.setAttribute('title', isDraggable ? 'Drag this card to a player' : 'Life Event: Apply effect and discard');
+
+                        cardElement.innerHTML = `
+                            <div class="p-3 ${headerBg} text-white text-center font-extrabold text-sm lg:text-lg uppercase tracking-wider flex items-center justify-center gap-2">
+                                ${icon} ${deckType}
+                            </div>
+                            <div class="p-3 lg:p-4 flex flex-col flex-grow items-center justify-center text-center">
+                                <h3 class="font-extrabold text-lg lg:text-xl mb-3">${title}</h3>
+                                <p class="text-xs lg:text-sm text-gray-700 leading-tight">${desc}</p>
+                            </div>
+                        `;
+                        
+                        container.appendChild(cardElement);
+
+                        if (animationClass) {
+                            setTimeout(() => {
+                                cardElement.classList.remove('drawn-card-animating');
+                            }, 400); 
+                        }
+                    });
+
+                    // FIX: Insert close button directly into the container so its absolute position is relative to the card group (which is size-constrained on desktop).
+                    container.insertAdjacentHTML('beforeend', `<button class="close-drawn-cards-btn" title="Clear all drawn cards">X</button>`);
+                    container.querySelector('.close-drawn-cards-btn').addEventListener('click', this.clearDrawnCards);
+                    
+                    this.addDragListeners();
+                } 
+            }
+
+            // CONTEXT FIX: Converted methods to class field arrow functions
+            drawCard = (deckKey) => {
+                if (this.drawnCards.length >= 5) {
+                    console.log("Too many cards drawn. Clear the area first.");
+                    return;
+                }
+                const deck = this.decks[deckKey];
+                if (!deck || deck.length === 0) {
+                    console.log(`The ${deckKey} deck is empty!`);
+                    return;
+                }
+                const card = deck.shift();
+                this.drawnCards.push({ ...card, deck: deckKey });
+                
+                this.renderDrawnCards(true);
+            }
+
+            // CONTEXT FIX: Converted methods to class field arrow functions
+            clearDrawnCards = () => {
+                const container = document.getElementById('drawn-card-container');
+                const cards = Array.from(container.querySelectorAll('.drawn-card'));
+                // FIX: Target the close button inside the container
+                const closeBtn = container.querySelector('.close-drawn-cards-btn'); 
+
+                if (cards.length === 0) {
+                    this.loadCardData();
+                    this.drawnCards = [];
+                    return;
+                }
+                
+                cards.forEach(card => {
+                    card.classList.remove('drawn-card-animating');
+                    card.classList.add('drawn-card-returning');
+                    card.draggable = false;
+                });
+                if (closeBtn) closeBtn.remove(); // Remove button instantly for good UX
+
+                setTimeout(() => {
+                    this.loadCardData();
+                    this.drawnCards = [];
+                    container.innerHTML = '';
+                    this.renderDrawnCards(false);
+                    console.log("Drawn cards returned and all decks have been reshuffled.");
+                }, 400); 
+            }
+
+            // CONTEXT FIX: Converted methods to class field arrow functions
+            assignCardToPlayer = (cardId, deckType, playerId) => {
+                this.saveState();
+                const player = this.players.find(p => p.id == playerId);
+                let cardSourceDeckKey = deckType === 'College Career' || deckType === 'Standard Career' ? 'Career' : deckType;
+                const card = this.cardData[cardSourceDeckKey].find(c => c.id == cardId);
+                
+                if (cardSourceDeckKey === 'Career') player.career = card;
+                if (cardSourceDeckKey === 'House') player.houses.push(card);
+
+                this.drawnCards = this.drawnCards.filter(c => c.id !== cardId);
+                
+                const container = document.getElementById('drawn-card-container');
+                container.innerHTML = '';
+                this.renderDrawnCards(false); 
+                
+                this.renderPlayerCards();
+            }
+
+            // CONTEXT FIX: Converted methods to class field arrow functions
+            sellHouse = (playerId, houseId) => {
+                this.saveState();
+                const player = this.players.find(p => p.id == playerId);
+                if (!player) return;
+                player.houses = player.houses.filter(h => h.id !== houseId);
+                this.renderPlayerCards();
+                this.showPlayerHouses(playerId);
+            }
+
+            // CONTEXT FIX: Converted methods to class field arrow functions
+            showPlayerHouses = (playerId) => {
+                const player = this.players.find(p => p.id == playerId);
+                if (!player) return;
+                const modal = document.getElementById('player-houses-modal');
+                const title = document.getElementById('player-houses-title');
+                const content = document.getElementById('player-houses-content');
+                title.textContent = `${player.name}'s Houses`;
+                if (player.houses.length === 0) {
+                    content.innerHTML = `<p class="text-center italic text-gray-400 p-4">This player doesn't own any houses yet. Time to buy!</p>`;
+                } else {
+                    content.innerHTML = player.houses.map(house => {
+                        const houseEmoji = getCardEmoji(house, 'House');
+                        // Added min-height to sell button for better touch target
+                        // NOTE: sellHouse call relies on global 'game' object which points to this instance
+                        return `<div class="house-card-details hover:bg-gray-600 transition duration-150">
+                        <div>
+                            <h4 class="font-bold text-lg text-white">${houseEmoji} ${house.title}</h4>
+                            <p class="text-xs text-gray-300 italic mb-2">${house.description}</p>
+                            <div class="text-sm space-y-1">
+                                <p>Buy Value: <span class="font-semibold text-yellow-300">$${house.buy}K</span></p>
+                                <p>Sell Low (Red): <span class="text-red-400 font-semibold">$${house.sellRed}K</span></p>
+                            <p>Sell High (Black): <span class="text-gray-300 font-semibold">$${house.sellBlack}K</span></p>
+                            </div>
+                        </div>
+                        <button onclick="game.sellHouse(${player.id}, '${house.id}')" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-150 text-sm min-h-[44px]">Sell</button>
+                    </div>`}).join('');
+                }
+                modal.classList.remove('hidden');
+            }
+
+            // CONTEXT FIX: Converted methods to class field arrow functions
+            closePlayerHouses = () => {
+                document.getElementById('player-houses-modal').classList.add('hidden');
+            }
+
+            // --- Touch Drag Simulation Methods (Mobile Optimization for Drag/Drop) ---
+            // CONTEXT FIX: Converted methods to class field arrow functions
+            handleTouchStart = (e) => {
+                e.preventDefault();
+                const cardEl = e.currentTarget;
+                if (!cardEl.hasAttribute('draggable') || !cardEl.getAttribute('draggable')) return;
+                
+                const touch = e.touches[0];
+                const rect = cardEl.getBoundingClientRect();
+
+                // 1. Set global state for drag
+                this.draggedCardData = {
+                    cardId: cardEl.dataset.cardId,
+                    deckType: cardEl.dataset.deckType,
+                };
+                
+                // 2. Create and style proxy element for visual drag feedback
+                const proxy = document.getElementById('touch-drag-proxy');
+                proxy.innerHTML = cardEl.innerHTML;
+                proxy.className = cardEl.className.replace('drawn-card', '').trim() + ' drawn-card';
+                proxy.style.display = 'flex';
+                proxy.style.left = `${touch.clientX}px`;
+                proxy.style.top = `${touch.clientY}px`;
+                proxy.classList.add('dragging');
+
+                // 3. Highlight instruction text
+                document.getElementById('drag-instruction').classList.add('text-green-400');
+            }
+
+            // CONTEXT FIX: Converted methods to class field arrow functions
+            handleTouchMove = (e) => {
+                if (!this.draggedCardData) return;
+                
+                const touch = e.touches[0];
+                const proxy = document.getElementById('touch-drag-proxy');
+                proxy.style.left = `${touch.clientX}px`;
+                proxy.style.top = `${touch.clientY}px`;
+
+                // Check for hover over player cards (drop target highlighting)
+                const target = document.elementFromPoint(touch.clientX, touch.clientY);
+                const playerCard = target ? target.closest('.player-card') : null;
+
+                document.querySelectorAll('.player-card').forEach(card => card.classList.remove('drop-hover'));
+
+                if (playerCard) {
+                    playerCard.classList.add('drop-hover');
+                }
+            }
+
+            // CONTEXT FIX: Converted methods to class field arrow functions
+            handleTouchEnd = (e) => {
+                if (!this.draggedCardData) return;
+                
+                const proxy = document.getElementById('touch-drag-proxy');
+                proxy.style.display = 'none';
+                proxy.classList.remove('dragging');
+                document.getElementById('drag-instruction').classList.remove('text-green-400');
+                
+                // Find the drop target
+                const touch = e.changedTouches[0];
+                const target = document.elementFromPoint(touch.clientX, touch.clientY);
+                const playerCard = target ? target.closest('.player-card') : null;
+
+                // Handle actual drop
+                if (playerCard) {
+                    this.assignCardToPlayer(this.draggedCardData.cardId, this.draggedCardData.deckType, playerCard.dataset.playerId);
+                } 
+                
+                // Clear all state and visual feedback
+                this.draggedCardData = null;
+                document.querySelectorAll('.player-card').forEach(card => card.classList.remove('drop-hover'));
+            }
+
+            addDragListeners() {
+                // Remove existing touch listeners before adding new ones to prevent duplicates
+                document.querySelectorAll('.drawn-card').forEach(card => {
+                    card.removeEventListener('touchstart', this.handleTouchStart);
+                    card.removeEventListener('touchmove', this.handleTouchMove);
+                    card.removeEventListener('touchend', this.handleTouchEnd);
+                });
+
+                // Add desktop drag listeners (original functionality)
+                document.querySelectorAll('.drawn-card[draggable="true"]').forEach(card => {
+                    card.addEventListener('dragstart', e => {
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('application/json', JSON.stringify({ cardId: e.currentTarget.dataset.cardId, deckType: e.currentTarget.dataset.deckType }));
+                        e.currentTarget.classList.add('dragging');
+                    });
+                    card.addEventListener('dragend', e => e.currentTarget.classList.remove('dragging'));
+
+                    // Add MOBILE touch listeners for drag simulation
+                    // NOTE: The methods are now self-bound class fields, so no explicit .bind(this) is needed here.
+                    card.addEventListener('touchstart', this.handleTouchStart);
+                    card.addEventListener('touchmove', this.handleTouchMove);
+                    card.addEventListener('touchend', this.handleTouchEnd);
+                });
+            }
+
+            // --- Spinner Logic (Unchanged, includes touch events) ---
+            initSpinner() {
+                const spinner = document.getElementById('spinner');
+                const spinForceMultiplier = 15;
+                let isDragging = false, angularVelocity = 0, currentAngle = 0, lastMouseAngle = 0;
+
+                const updateSpinner = () => {
+                    if (!isDragging && Math.abs(angularVelocity) > 0.01) {
+                        angularVelocity *= 0.98;
+                        currentAngle += angularVelocity;
+                    } else if (!isDragging) angularVelocity = 0;
+                    spinner.style.transform = `rotate(${currentAngle}deg)`;
+                    requestAnimationFrame(updateSpinner);
+                };
+
+                const getAngle = (clientX, clientY) => {
+                    const rect = spinner.getBoundingClientRect();
+                    const center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+                    return Math.atan2(clientY - center.y, clientX - center.x) * (180 / Math.PI);
+                };
+
+                const startDrag = (e) => {
+                    // Check if event is a touch event and prevent default only if one touch is present
+                    if (e.touches && e.touches.length === 1) e.preventDefault(); 
+                    else if (!e.touches) e.preventDefault(); // Mouse event
+
+                    isDragging = true;
+                    angularVelocity = 0;
+                    const clientX = e.clientX || e.touches[0].clientX;
+                    const clientY = e.clientY || e.touches[0].clientY;
+                    lastMouseAngle = getAngle(clientX, clientY);
+                };
+
+                const doDrag = (e) => {
+                    if (!isDragging) return;
+                    // Prevent default to stop page scrolling during spinner drag
+                    if (e.touches) e.preventDefault(); 
+
+                    const clientX = e.clientX || e.touches[0].clientX;
+                    const clientY = e.clientY || e.touches[0].clientY;
+                    const currentMouseAngle = getAngle(clientX, clientY);
+                    let deltaAngle = currentMouseAngle - lastMouseAngle;
+                    if (deltaAngle > 180) deltaAngle -= 360;
+                    if (deltaAngle < -180) deltaAngle += 360;
+                    angularVelocity = deltaAngle;
+                    currentAngle += angularVelocity;
+                    lastMouseAngle = currentMouseAngle;
+                };
+
+                const endDrag = () => {
+                     if (isDragging) {
+                         isDragging = false;
+                         angularVelocity *= spinForceMultiplier;
+                     }
+                };
+
+                // Mouse Events
+                spinner.addEventListener('mousedown', startDrag);
+                window.addEventListener('mousemove', doDrag);
+                window.addEventListener('mouseup', endDrag);
+
+                // Touch Events for mobile responsiveness
+                spinner.addEventListener('touchstart', (e) => startDrag(e));
+                window.addEventListener('touchmove', (e) => doDrag(e), { passive: false });
+                window.addEventListener('touchend', endDrag);
+
+                requestAnimationFrame(updateSpinner);
+            }
+        }
+        const game = new Game();
+    </script>
+</body>
+</html>
